@@ -1,4 +1,4 @@
-const CACHE_NAME = 'time-scout-v1';
+const CACHE_NAME = 'time-scout-v3';
 const ASSETS = [
   './',
   './index.html',
