@@ -98,6 +98,14 @@
   </section>
 
   <section class="card">
+    <h2>Histórico de partidas</h2>
+    <p class="small">Ao clicar em <strong>Finalizar jogo</strong>, a partida é salva aqui automaticamente. Você pode abrir novamente ou apagar.</p>
+    <button onclick="renderHistory()">Atualizar histórico</button>
+    <button class="secondary" onclick="clearCurrentMatchKeepRoster()">Nova partida mantendo elenco</button>
+    <div id="history"></div>
+  </section>
+
+  <section class="card">
     <h2>Relatório final / Ranking por tempo em quadra</h2>
     <button onclick="showReport()">Atualizar relatório</button>
     <button onclick="exportCSV()">Exportar CSV/Excel simples</button>
@@ -176,7 +184,9 @@ function finishGame() {
   document.getElementById('status').innerText = 'Finalizado';
   showReport();
   saveState();
-  alert('Jogo finalizado. Os dados continuam salvos na tela para você exportar.');
+  saveMatchToHistory();
+  renderHistory();
+  alert('Jogo finalizado e salvo no histórico. Os atletas e dados continuam salvos.');
 }
 
 function resetTimesOnly() {
@@ -390,6 +400,97 @@ function loadState() {
   document.getElementById(id).addEventListener('keyup', saveState);
 });
 
+function getHistory(){
+  try { return JSON.parse(localStorage.getItem('timeScoutHistoryV2') || '[]'); } catch(e){ return []; }
+}
+
+function setHistory(history){
+  localStorage.setItem('timeScoutHistoryV2', JSON.stringify(history));
+}
+
+function getCurrentMatchData(){
+  tick();
+  return {
+    id: Date.now(),
+    savedAt: new Date().toISOString(),
+    team: document.getElementById('team').value || 'Time',
+    opponent: document.getElementById('opponent').value || 'Adversário',
+    competition: document.getElementById('competition').value || '',
+    scoreTeam: document.getElementById('scoreTeam').value || '0',
+    scoreOpponent: document.getElementById('scoreOpponent').value || '0',
+    date: document.getElementById('date').value || '',
+    athletes: JSON.parse(JSON.stringify(athletes.map(normalizeAthlete))),
+    periodSeconds: [...periodSeconds],
+    currentPeriod,
+    status: document.getElementById('status').innerText
+  };
+}
+
+function saveMatchToHistory(){
+  const match = getCurrentMatchData();
+  const history = getHistory();
+  history.unshift(match);
+  setHistory(history.slice(0, 200));
+}
+
+function loadMatchFromHistory(id){
+  const match = getHistory().find(m => String(m.id) === String(id));
+  if (!match) return;
+  if (!confirm('Abrir essa partida? A partida atual será substituída na tela, mas o histórico continuará salvo.')) return;
+  gameRunning = false;
+  document.getElementById('team').value = match.team || '';
+  document.getElementById('opponent').value = match.opponent || '';
+  document.getElementById('competition').value = match.competition || '';
+  document.getElementById('scoreTeam').value = match.scoreTeam || '';
+  document.getElementById('scoreOpponent').value = match.scoreOpponent || '';
+  if (match.date) document.getElementById('date').value = match.date;
+  athletes = Array.isArray(match.athletes) ? match.athletes.map(normalizeAthlete) : [];
+  periodSeconds = Array.isArray(match.periodSeconds) ? [...match.periodSeconds] : [0,0];
+  currentPeriod = match.currentPeriod || 0;
+  athletes.forEach(a => a.playing = false);
+  document.getElementById('status').innerText = match.status || 'Finalizado';
+  saveState();
+  render();
+  showReport();
+}
+
+function deleteMatchFromHistory(id){
+  if (!confirm('Apagar essa partida do histórico?')) return;
+  setHistory(getHistory().filter(m => String(m.id) !== String(id)));
+  renderHistory();
+}
+
+function clearCurrentMatchKeepRoster(){
+  if (!confirm('Criar nova partida mantendo o elenco? Os tempos, placar, adversário e relatório serão zerados.')) return;
+  gameRunning = false;
+  periodSeconds = [0, 0];
+  currentPeriod = 0;
+  athletes.forEach(a => { a.seconds = 0; a.entries = 0; a.periodSeconds = [0,0]; a.periodEntries = [0,0]; a.playing = false; });
+  ['opponent','competition','scoreTeam','scoreOpponent'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('date').valueAsDate = new Date();
+  document.getElementById('report').innerHTML = '';
+  document.getElementById('status').innerText = 'Pausado';
+  saveState();
+  render();
+}
+
+function renderHistory(){
+  const container = document.getElementById('history');
+  if (!container) return;
+  const history = getHistory();
+  if (!history.length) {
+    container.innerHTML = '<p class="small">Nenhuma partida salva ainda.</p>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Data</th><th>Partida</th><th>Placar</th><th>Tempo</th><th>Ações</th></tr></thead><tbody>';
+  history.forEach(m => {
+    const score = `${escapeHTML(m.scoreTeam || 0)} x ${escapeHTML(m.scoreOpponent || 0)}`;
+    html += `<tr><td>${escapeHTML(m.date || '')}</td><td><strong>${escapeHTML(m.team || 'Time')}</strong> x ${escapeHTML(m.opponent || 'Adversário')}<br><span class="small">${escapeHTML(m.competition || '')}</span></td><td>${score}</td><td>${formatTime((m.periodSeconds?.[0] || 0) + (m.periodSeconds?.[1] || 0))}</td><td><button onclick="loadMatchFromHistory(${m.id})">Abrir</button><button class="danger" onclick="deleteMatchFromHistory(${m.id})">Apagar</button></td></tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
 
 // PWA: instalação e funcionamento offline
 if ('serviceWorker' in navigator) {
@@ -419,6 +520,7 @@ if (installBtn) {
 
 loadState();
 render();
+renderHistory();
 </script>
 </body>
 </html>
