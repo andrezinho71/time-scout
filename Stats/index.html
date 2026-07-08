@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Time Scout v0.3</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#102a43" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Time Scout" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #eef2f6; color: #222; user-select: none; -webkit-tap-highlight-color: transparent; }
+  header { background: #102a43; color: white; padding: 12px 16px; text-align: center; }
+  header h1 { margin: 0; font-size: 24px; }
+  main { padding: 12px; max-width: 980px; margin: auto; }
+  .card { background: white; border-radius: 14px; padding: 14px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.09); }
+  #matchCard { position: sticky; top: 0; z-index: 10; border: 1px solid #dbe4ee; }
+  #matchCard h2 { margin: 0 0 8px; }
+  #rosterCard.hidden { display: none; }
+  #athletesCard { min-height: 48vh; }
+  #athletes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+  input, button { font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
+  input { width: calc(100% - 24px); margin: 5px 0; }
+  button { cursor: pointer; border: none; margin: 4px; background: #1976d2; color: white; }
+  button.secondary { background: #555; }
+  button.danger { background: #c62828; }
+  button.success { background: #2e7d32; }
+  .athlete { display: flex; justify-content: space-between; align-items: center; padding: 16px; margin: 0; border-radius: 14px; border: 2px solid #ddd; min-height: 82px; }
+  .playing { background: #e8f5e9; border-color: #2e7d32; }
+  .bench { background: #ffebee; border-color: #c62828; }
+  .name { font-weight: bold; font-size: 20px; }
+  .time { font-size: 24px; font-weight: bold; text-align:right; }
+  .small { font-size: 13px; color: #555; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+  th { background: #102a43; color: white; }
+  .top-info { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .score-row { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; }
+  .period-box { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .period-active { background:#ff9800 !important; color:#111 !important; font-weight:bold; }
+  .summary { display:grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:8px; margin-top:10px; }
+  .summary div { background:#eef2f7; padding:10px; border-radius:8px; text-align:center; }
+  .xls-note { font-size:12px; color:#555; }
+
+  .compact-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .athlete-count { font-size: 13px; color:#555; margin-left:auto; }
+  .section-head { display:flex; align-items:center; gap:8px; justify-content:space-between; flex-wrap:wrap; }
+  @media (max-width: 720px) {
+    header { padding: 10px; }
+    header h1 { font-size: 21px; }
+    main { padding: 8px; }
+    .card { padding: 10px; border-radius: 12px; }
+    #matchCard { top: 0; }
+    #matchCard h2 { display:none; }
+    input, button { font-size: 15px; padding: 9px; }
+    .score-row { grid-template-columns: 1fr 78px 78px; }
+    .top-info h3 { font-size: 15px; margin: 4px 0; }
+    #athletes { grid-template-columns: 1fr; }
+    .athlete { min-height: 76px; padding: 14px; }
+    .name { font-size: 19px; }
+    .time { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Time Scout</h1>
+  <div>Controle de tempo em quadra</div>
+</header>
+<main>
+  <section class="card" id="installCard" style="display:none;">
+    <h2>Instalar aplicativo</h2>
+    <p class="small">Instale o Time Scout na tela inicial para usar em tela cheia, como aplicativo.</p>
+    <button class="success" id="installBtn">Instalar Time Scout</button>
+  </section>
+
+  <section class="card" id="matchCard">
+    <h2>Dados da partida</h2>
+    <input id="team" placeholder="Nome do time" />
+    <input id="opponent" placeholder="Adversário" />
+    <input id="date" type="date" />
+    <div class="score-row">
+      <input id="competition" placeholder="Competição / Rodada (opcional)" />
+      <input id="scoreTeam" type="number" min="0" placeholder="Gols time" />
+      <input id="scoreOpponent" type="number" min="0" placeholder="Gols adv." />
+    </div>
+    <div class="period-box">
+      <strong>Tempo atual:</strong>
+      <button id="btnP1" onclick="setPeriod(0)">1º tempo</button>
+      <button id="btnP2" onclick="setPeriod(1)">2º tempo</button>
+      <span class="small">O relatório soma 1º + 2º tempo automaticamente.</span>
+    </div>
+    <div class="row">
+      <button class="success" onclick="startGame()">Iniciar/Retomar</button>
+      <button class="secondary" onclick="pauseGame()">Pausar</button>
+      <button class="success" onclick="finishGame()">Finalizar jogo</button>
+      <button class="danger" onclick="resetTimesOnly()">Novo jogo / zerar tempos</button>
+      <button class="danger" onclick="resetAll()">Apagar tudo</button>
+    </div>
+    <div class="top-info">
+      <h3>Tempo total: <span id="gameClock">00:00</span></h3>
+      <h3>1º tempo: <span id="clockP1">00:00</span></h3>
+      <h3>2º tempo: <span id="clockP2">00:00</span></h3>
+      <h3>Status: <span id="status">Pausado</span></h3>
+    </div>
+  </section>
+
+  <section class="card" id="rosterCard">
+    <div class="section-head"><h2>Cadastrar atletas</h2><button class="secondary" onclick="toggleRosterPanel(false)">Fechar cadastro</button></div>
+    <input id="athleteName" placeholder="Nome do atleta" onkeydown="if(event.key==='Enter') addAthlete()" />
+    <button onclick="addAthlete()">Adicionar atleta</button>
+    <button class="secondary" onclick="loadExample()">Carregar exemplo 14 atletas</button>
+    <p class="small">Dica: toque no nome do atleta para alternar entre em quadra e banco. Não há limite de 5 atletas para evitar travar o uso por clique acidental ou por goleiro fora do controle.</p>
+  </section>
+
+  <section class="card" id="athletesCard">
+    <div class="section-head"><h2>Atletas</h2><div><button class="secondary" onclick="toggleRosterPanel(true)">Gerenciar atletas</button><span class="athlete-count" id="athleteCount"></span></div></div>
+    <div id="athletes"></div>
+  </section>
+
+  <section class="card">
+    <h2>Histórico de partidas</h2>
+    <p class="small">Ao clicar em <strong>Finalizar jogo</strong>, a partida é salva aqui automaticamente. Você pode abrir novamente ou apagar.</p>
+    <button onclick="renderHistory()">Atualizar histórico</button>
+    <button class="secondary" onclick="clearCurrentMatchKeepRoster()">Nova partida mantendo elenco</button>
+    <div id="history"></div>
+  </section>
+
+  <section class="card">
+    <h2>Relatório final / Ranking por tempo em quadra</h2>
+    <button onclick="showReport()">Atualizar relatório</button>
+    <button onclick="exportCSV()">Exportar CSV/Excel simples</button>
+    <button class="success" onclick="exportExcelHTML()">Exportar Excel bonito</button>
+    <div class="xls-note">O botão “Excel bonito” gera um arquivo .xls formatado que abre direto no Excel, com 1º tempo, 2º tempo, total, porcentagem e placar.</div>
+    <div id="report"></div>
+  </section>
+</main>
+<script>
+let athletes = [];
+let deferredInstallPrompt = null;
+let gameRunning = false;
+let periodSeconds = [0, 0];
+let currentPeriod = 0;
+let lastTick = Date.now();
+let interval = null;
+
+document.getElementById('date').valueAsDate = new Date();
+
+function normalizeAthlete(a){
+  if (!Array.isArray(a.periodSeconds)) a.periodSeconds = [a.seconds || 0, 0];
+  if (!Array.isArray(a.periodEntries)) a.periodEntries = [a.entries || 0, 0];
+  a.seconds = (a.periodSeconds[0] || 0) + (a.periodSeconds[1] || 0);
+  a.entries = (a.periodEntries[0] || 0) + (a.periodEntries[1] || 0);
+  if (typeof a.playing !== 'boolean') a.playing = false;
+  return a;
+}
+
+function totalGameSeconds(){ return (periodSeconds[0] || 0) + (periodSeconds[1] || 0); }
+
+function formatTime(sec) {
+  sec = Math.floor(sec || 0);
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = (sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function tick() {
+  const now = Date.now();
+  const delta = (now - lastTick) / 1000;
+  lastTick = now;
+  if (gameRunning) {
+    periodSeconds[currentPeriod] += delta;
+    athletes.forEach(a => { if (a.playing) { a.periodSeconds[currentPeriod] += delta; a.seconds += delta; } });
+  }
+  render();
+}
+
+function setPeriod(p) {
+  tick();
+  currentPeriod = p;
+  athletes.forEach(a => a.playing = false);
+  document.getElementById('status').innerText = gameRunning ? `Rodando - ${p+1}º tempo` : `Pausado - ${p+1}º tempo`;
+  saveState();
+  render();
+}
+
+function startGame() {
+  toggleRosterPanel(false);
+  gameRunning = true;
+  lastTick = Date.now();
+  document.getElementById('status').innerText = `Rodando - ${currentPeriod+1}º tempo`;
+  if (!interval) interval = setInterval(tick, 500);
+}
+
+function pauseGame() {
+  tick();
+  gameRunning = false;
+  document.getElementById('status').innerText = `Pausado - ${currentPeriod+1}º tempo`;
+  saveState();
+}
+
+function finishGame() {
+  tick();
+  gameRunning = false;
+  athletes.forEach(a => a.playing = false);
+  document.getElementById('status').innerText = 'Finalizado';
+  showReport();
+  saveState();
+  saveMatchToHistory();
+  renderHistory();
+  alert('Jogo finalizado e salvo no histórico. Os atletas e dados continuam salvos.');
+}
+
+function resetTimesOnly() {
+  if (!confirm('Zerar apenas tempos, entradas e placar, mantendo time, adversário, data, competição e atletas?')) return;
+  gameRunning = false;
+  periodSeconds = [0, 0];
+  currentPeriod = 0;
+  athletes.forEach(a => { a.seconds = 0; a.entries = 0; a.periodSeconds = [0,0]; a.periodEntries = [0,0]; a.playing = false; });
+  document.getElementById('scoreTeam').value = '';
+  document.getElementById('scoreOpponent').value = '';
+  document.getElementById('report').innerHTML = '';
+  document.getElementById('status').innerText = 'Pausado';
+  saveState();
+  render();
+}
+
+function resetAll() {
+  if (!confirm('Apagar tudo? Isso remove atletas, time, adversário, data, placar e tempos.')) return;
+  athletes = [];
+  periodSeconds = [0, 0];
+  currentPeriod = 0;
+  gameRunning = false;
+  ['team','opponent','competition','scoreTeam','scoreOpponent'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('date').valueAsDate = new Date();
+  document.getElementById('report').innerHTML = '';
+  document.getElementById('status').innerText = 'Pausado';
+  localStorage.removeItem('timeScoutV1');
+  localStorage.removeItem('scoutFutsalTempo');
+  render();
+}
+
+function addAthlete(name = null) {
+  const input = document.getElementById('athleteName');
+  const athleteName = name || input.value.trim();
+  if (!athleteName) return;
+  athletes.push({ name: athleteName, seconds: 0, entries: 0, periodSeconds: [0,0], periodEntries: [0,0], playing: false });
+  input.value = '';
+  saveState();
+  render();
+}
+
+function loadExample() {
+  if (athletes.length && !confirm('Adicionar exemplo junto aos atletas atuais?')) return;
+  ['Goleiro 1','Goleiro 2','Fixo 1','Fixo 2','Ala 1','Ala 2','Ala 3','Ala 4','Pivô 1','Pivô 2','Atleta 11','Atleta 12','Atleta 13','Atleta 14'].forEach(n => addAthlete(n));
+}
+
+function toggleAthlete(i) {
+  tick();
+  athletes[i].playing = !athletes[i].playing;
+  if (athletes[i].playing) { athletes[i].periodEntries[currentPeriod] += 1; athletes[i].entries += 1; }
+  saveState();
+  render();
+}
+
+function removeAthlete(i) {
+  if (!confirm('Remover atleta?')) return;
+  athletes.splice(i, 1);
+  saveState();
+  render();
+}
+
+function toggleRosterPanel(show) {
+  const card = document.getElementById('rosterCard');
+  if (!card) return;
+  if (show) card.classList.remove('hidden');
+  else card.classList.add('hidden');
+}
+
+function render() {
+  document.getElementById('gameClock').innerText = formatTime(totalGameSeconds());
+  document.getElementById('clockP1').innerText = formatTime(periodSeconds[0]);
+  document.getElementById('clockP2').innerText = formatTime(periodSeconds[1]);
+  document.getElementById('btnP1').className = currentPeriod === 0 ? 'period-active' : '';
+  document.getElementById('btnP2').className = currentPeriod === 1 ? 'period-active' : '';
+  const count = document.getElementById('athleteCount');
+  if (count) count.innerText = athletes.length ? `${athletes.length} atletas` : 'nenhum atleta';
+  const container = document.getElementById('athletes');
+  container.innerHTML = '';
+  if (!athletes.length) { container.innerHTML = '<p class="small">Cadastre atletas em Gerenciar atletas. Durante o jogo, essa área vira o foco principal.</p>'; return; }
+  athletes.forEach((a, i) => {
+    normalizeAthlete(a);
+    const div = document.createElement('div');
+    div.className = 'athlete ' + (a.playing ? 'playing' : 'bench');
+    div.innerHTML = `
+      <div onclick="toggleAthlete(${i})" style="flex:1; cursor:pointer;">
+        <div class="name">${a.playing ? '🟢' : '🔴'} ${escapeHTML(a.name)}</div>
+        <div class="small">${a.playing ? 'Em quadra' : 'Banco'} | Entradas: ${a.entries} | 1º: ${formatTime(a.periodSeconds[0])} | 2º: ${formatTime(a.periodSeconds[1])}</div>
+      </div>
+      <div>
+        <div class="time">${formatTime(a.seconds)}</div>
+        <button class="danger" onclick="removeAthlete(${i})">X</button>
+      </div>`;
+    container.appendChild(div);
+  });
+}
+
+function getReportRows() {
+  const gameTotal = totalGameSeconds();
+  return athletes.map(a => {
+    normalizeAthlete(a);
+    const avg = a.entries ? a.seconds / a.entries : 0;
+    const pct = gameTotal ? (a.seconds / gameTotal * 100) : 0;
+    return { 
+      name: a.name, p1: formatTime(a.periodSeconds[0]), p2: formatTime(a.periodSeconds[1]), 
+      total: formatTime(a.seconds), entries: a.entries, avg: formatTime(avg), pct: pct.toFixed(1) + '%',
+      seconds: Math.floor(a.seconds), p1s: Math.floor(a.periodSeconds[0]), p2s: Math.floor(a.periodSeconds[1])
+    };
+  }).sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+function showReport() {
+  tick();
+  const rows = getReportRows();
+  const score = `${document.getElementById('scoreTeam').value || 0} x ${document.getElementById('scoreOpponent').value || 0}`;
+  let html = `<div class="summary"><div><strong>Placar</strong><br>${escapeHTML(score)}</div><div><strong>Tempo total</strong><br>${formatTime(totalGameSeconds())}</div><div><strong>1º tempo</strong><br>${formatTime(periodSeconds[0])}</div><div><strong>2º tempo</strong><br>${formatTime(periodSeconds[1])}</div></div>`;
+  html += '<table><thead><tr><th>Ranking</th><th>Atleta</th><th>1º tempo</th><th>2º tempo</th><th>Total</th><th>Entradas</th><th>Média/entrada</th><th>% da partida</th></tr></thead><tbody>';
+  rows.forEach((r, idx) => html += `<tr><td><strong>${idx + 1}º</strong></td><td>${escapeHTML(r.name)}</td><td>${r.p1}</td><td>${r.p2}</td><td><strong>${r.total}</strong></td><td>${r.entries}</td><td>${r.avg}</td><td>${r.pct}</td></tr>`);
+  html += '</tbody></table>';
+  document.getElementById('report').innerHTML = html;
+}
+
+function cleanCSV(value) { return String(value ?? '').replace(/;/g, ',').replace(/\n/g, ' ').trim(); }
+function escapeHTML(value) { return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+
+function fileBaseName(){
+  const team = (document.getElementById('team').value || 'time').replace(/[^a-z0-9_-]+/gi,'_');
+  const date = document.getElementById('date').value || 'jogo';
+  return `scout_futsal_${team}_${date}`;
+}
+
+function exportCSV() {
+  tick();
+  const team = document.getElementById('team').value || 'Time';
+  const opponent = document.getElementById('opponent').value || 'Adversario';
+  const date = document.getElementById('date').value || '';
+  const comp = document.getElementById('competition').value || '';
+  const score = `${document.getElementById('scoreTeam').value || 0} x ${document.getElementById('scoreOpponent').value || 0}`;
+  const rows = getReportRows();
+  let csv = '\ufeffsep=;\n';
+  csv += 'Time;Adversário;Data;Competição/Rodada;Placar;Tempo total;1º tempo;2º tempo;Status\n';
+  csv += `${cleanCSV(team)};${cleanCSV(opponent)};${cleanCSV(date)};${cleanCSV(comp)};${cleanCSV(score)};${formatTime(totalGameSeconds())};${formatTime(periodSeconds[0])};${formatTime(periodSeconds[1])};${document.getElementById('status').innerText}\n\n`;
+  csv += 'Ranking;Atleta;1º tempo;2º tempo;Total jogado;Total segundos;Entradas;Média por entrada;Percentual da partida\n';
+  rows.forEach((r, idx) => csv += `${idx + 1}º;${cleanCSV(r.name)};${r.p1};${r.p2};${r.total};${r.seconds};${r.entries};${r.avg};${r.pct}\n`);
+  downloadBlob(csv, `${fileBaseName()}.csv`, 'text/csv;charset=utf-8;');
+  saveState();
+}
+
+function exportExcelHTML(){
+  tick();
+  const rows = getReportRows();
+  const team = document.getElementById('team').value || 'Time';
+  const opponent = document.getElementById('opponent').value || 'Adversário';
+  const date = document.getElementById('date').value || '';
+  const comp = document.getElementById('competition').value || '';
+  const score = `${document.getElementById('scoreTeam').value || 0} x ${document.getElementById('scoreOpponent').value || 0}`;
+  let table = `
+  <table>
+    <tr><th colspan="8" class="title">Scout Futsal - Tempo em Quadra</th></tr>
+    <tr><td class="label">Time</td><td>${escapeHTML(team)}</td><td class="label">Adversário</td><td>${escapeHTML(opponent)}</td><td class="label">Data</td><td colspan="2">${escapeHTML(date)}</td></tr>
+    <tr><td class="label">Competição/Rodada</td><td>${escapeHTML(comp)}</td><td class="label">Placar</td><td>${escapeHTML(score)}</td><td class="label">Status</td><td colspan="2">${escapeHTML(document.getElementById('status').innerText)}</td></tr>
+    <tr><td class="label">Tempo total</td><td>${formatTime(totalGameSeconds())}</td><td class="label">1º tempo</td><td>${formatTime(periodSeconds[0])}</td><td class="label">2º tempo</td><td colspan="2">${formatTime(periodSeconds[1])}</td></tr>
+    <tr></tr>
+    <tr><th>Ranking</th><th>Atleta</th><th>1º tempo</th><th>2º tempo</th><th>Total jogado</th><th>Total segundos</th><th>Entradas</th><th>% da partida</th></tr>`;
+  rows.forEach((r, idx) => { table += `<tr><td><b>${idx + 1}º</b></td><td>${escapeHTML(r.name)}</td><td>${r.p1}</td><td>${r.p2}</td><td><b>${r.total}</b></td><td>${r.seconds}</td><td>${r.entries}</td><td>${r.pct}</td></tr>`; });
+  table += '</table>';
+  const excel = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    table{border-collapse:collapse;font-family:Arial;font-size:12px;} td,th{border:1px solid #999;padding:6px;text-align:center;} th{background:#102a43;color:white;font-weight:bold;} .title{font-size:18px;background:#102a43;color:white;} .label{background:#d9eaf7;font-weight:bold;}
+  
+  .compact-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .athlete-count { font-size: 13px; color:#555; margin-left:auto; }
+  .section-head { display:flex; align-items:center; gap:8px; justify-content:space-between; flex-wrap:wrap; }
+  @media (max-width: 720px) {
+    header { padding: 10px; }
+    header h1 { font-size: 21px; }
+    main { padding: 8px; }
+    .card { padding: 10px; border-radius: 12px; }
+    #matchCard { top: 0; }
+    #matchCard h2 { display:none; }
+    input, button { font-size: 15px; padding: 9px; }
+    .score-row { grid-template-columns: 1fr 78px 78px; }
+    .top-info h3 { font-size: 15px; margin: 4px 0; }
+    #athletes { grid-template-columns: 1fr; }
+    .athlete { min-height: 76px; padding: 14px; }
+    .name { font-size: 19px; }
+    .time { font-size: 23px; }
+  }
+</style></head><body>${table}</body></html>`;
+  downloadBlob(excel, `${fileBaseName()}.xls`, 'application/vnd.ms-excel;charset=utf-8;');
+  saveState();
+}
+
+function downloadBlob(content, filename, type){
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function saveState() {
+  const data = {
+    team: document.getElementById('team').value,
+    opponent: document.getElementById('opponent').value,
+    competition: document.getElementById('competition').value,
+    scoreTeam: document.getElementById('scoreTeam').value,
+    scoreOpponent: document.getElementById('scoreOpponent').value,
+    date: document.getElementById('date').value,
+    athletes,
+    periodSeconds,
+    currentPeriod,
+    status: document.getElementById('status').innerText
+  };
+  localStorage.setItem('timeScoutV1', JSON.stringify(data));
+}
+
+function loadState() {
+  const saved = localStorage.getItem('timeScoutV1') || localStorage.getItem('scoutFutsalTempo');
+  if (!saved) return;
+  try {
+    const data = JSON.parse(saved);
+    document.getElementById('team').value = data.team || '';
+    document.getElementById('opponent').value = data.opponent || '';
+    document.getElementById('competition').value = data.competition || '';
+    document.getElementById('scoreTeam').value = data.scoreTeam || '';
+    document.getElementById('scoreOpponent').value = data.scoreOpponent || '';
+    if (data.date) document.getElementById('date').value = data.date;
+    athletes = Array.isArray(data.athletes) ? data.athletes.map(normalizeAthlete) : [];
+    if (Array.isArray(data.periodSeconds)) periodSeconds = data.periodSeconds; else periodSeconds = [data.gameSeconds || 0, 0];
+    currentPeriod = data.currentPeriod || 0;
+    gameRunning = false;
+    athletes.forEach(a => a.playing = false);
+    document.getElementById('status').innerText = data.status || 'Pausado';
+  } catch(e) {}
+}
+
+['team','opponent','date','competition','scoreTeam','scoreOpponent'].forEach(id => {
+  document.getElementById(id).addEventListener('change', saveState);
+  document.getElementById(id).addEventListener('keyup', saveState);
+});
+
+function getHistory(){
+  try { return JSON.parse(localStorage.getItem('timeScoutHistoryV2') || '[]'); } catch(e){ return []; }
+}
+
+function setHistory(history){
+  localStorage.setItem('timeScoutHistoryV2', JSON.stringify(history));
+}
+
+function getCurrentMatchData(){
+  tick();
+  return {
+    id: Date.now(),
+    savedAt: new Date().toISOString(),
+    team: document.getElementById('team').value || 'Time',
+    opponent: document.getElementById('opponent').value || 'Adversário',
+    competition: document.getElementById('competition').value || '',
+    scoreTeam: document.getElementById('scoreTeam').value || '0',
+    scoreOpponent: document.getElementById('scoreOpponent').value || '0',
+    date: document.getElementById('date').value || '',
+    athletes: JSON.parse(JSON.stringify(athletes.map(normalizeAthlete))),
+    periodSeconds: [...periodSeconds],
+    currentPeriod,
+    status: document.getElementById('status').innerText
+  };
+}
+
+function saveMatchToHistory(){
+  const match = getCurrentMatchData();
+  const history = getHistory();
+  history.unshift(match);
+  setHistory(history.slice(0, 200));
+}
+
+function loadMatchFromHistory(id){
+  const match = getHistory().find(m => String(m.id) === String(id));
+  if (!match) return;
+  if (!confirm('Abrir essa partida? A partida atual será substituída na tela, mas o histórico continuará salvo.')) return;
+  gameRunning = false;
+  document.getElementById('team').value = match.team || '';
+  document.getElementById('opponent').value = match.opponent || '';
+  document.getElementById('competition').value = match.competition || '';
+  document.getElementById('scoreTeam').value = match.scoreTeam || '';
+  document.getElementById('scoreOpponent').value = match.scoreOpponent || '';
+  if (match.date) document.getElementById('date').value = match.date;
+  athletes = Array.isArray(match.athletes) ? match.athletes.map(normalizeAthlete) : [];
+  periodSeconds = Array.isArray(match.periodSeconds) ? [...match.periodSeconds] : [0,0];
+  currentPeriod = match.currentPeriod || 0;
+  athletes.forEach(a => a.playing = false);
+  document.getElementById('status').innerText = match.status || 'Finalizado';
+  saveState();
+  render();
+  showReport();
+}
+
+function deleteMatchFromHistory(id){
+  if (!confirm('Apagar essa partida do histórico?')) return;
+  setHistory(getHistory().filter(m => String(m.id) !== String(id)));
+  renderHistory();
+}
+
+function clearCurrentMatchKeepRoster(){
+  if (!confirm('Criar nova partida mantendo o elenco? Os tempos, placar, adversário e relatório serão zerados.')) return;
+  gameRunning = false;
+  periodSeconds = [0, 0];
+  currentPeriod = 0;
+  athletes.forEach(a => { a.seconds = 0; a.entries = 0; a.periodSeconds = [0,0]; a.periodEntries = [0,0]; a.playing = false; });
+  ['opponent','competition','scoreTeam','scoreOpponent'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('date').valueAsDate = new Date();
+  document.getElementById('report').innerHTML = '';
+  document.getElementById('status').innerText = 'Pausado';
+  saveState();
+  render();
+}
+
+function renderHistory(){
+  const container = document.getElementById('history');
+  if (!container) return;
+  const history = getHistory();
+  if (!history.length) {
+    container.innerHTML = '<p class="small">Nenhuma partida salva ainda.</p>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Data</th><th>Partida</th><th>Placar</th><th>Tempo</th><th>Ações</th></tr></thead><tbody>';
+  history.forEach(m => {
+    const score = `${escapeHTML(m.scoreTeam || 0)} x ${escapeHTML(m.scoreOpponent || 0)}`;
+    html += `<tr><td>${escapeHTML(m.date || '')}</td><td><strong>${escapeHTML(m.team || 'Time')}</strong> x ${escapeHTML(m.opponent || 'Adversário')}<br><span class="small">${escapeHTML(m.competition || '')}</span></td><td>${score}</td><td>${formatTime((m.periodSeconds?.[0] || 0) + (m.periodSeconds?.[1] || 0))}</td><td><button onclick="loadMatchFromHistory(${m.id})">Abrir</button><button class="danger" onclick="deleteMatchFromHistory(${m.id})">Apagar</button></td></tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+
+// PWA: instalação e funcionamento offline
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  const card = document.getElementById('installCard');
+  if (card) card.style.display = 'block';
+});
+
+const installBtn = document.getElementById('installBtn');
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    const card = document.getElementById('installCard');
+    if (card) card.style.display = 'none';
+  });
+}
+
+loadState();
+if (athletes.length) toggleRosterPanel(false);
+render();
+renderHistory();
+</script>
+</body>
+</html>
